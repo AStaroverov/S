@@ -23,6 +23,10 @@ export interface S {
         value: T;
     };
     disposeNode(node: INode<any>): void;
+    useValue<T>(value: T, eq?: (a: T, b: T) => boolean): DataSignal<T>;
+    useEffect(deps: unknown | unknown[], fn: () => void): void;
+    useEffect(fn: () => void): void;
+    async(cb: (setter: <T>(cb: () => T) => T) => void): void;
 }
 export interface DataSignal<T> {
     (): T;

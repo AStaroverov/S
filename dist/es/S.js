@@ -1,10 +1,12 @@
 // Public interface
 var S = function S(fn, value) {
     if (Owner === null)
-        console.warn("computations created without a root or parent will never be disposed");
+        console.warn('computations created without a root or parent will never be disposed');
     var _a = makeComputationNode(fn, value, false, false), node = _a.node, _value = _a.value;
     if (node === null) {
-        return function computation() { return _value; };
+        return function computation() {
+            return _value;
+        };
     }
     else {
         return function computation() {
@@ -16,17 +18,19 @@ var S = function S(fn, value) {
 Object.defineProperty(S, 'default', { value: S });
 export default S;
 S.root = function root(fn) {
-    var owner = Owner, disposer = fn.length === 0 ? null : function _dispose() {
-        if (root === null) {
-            // nothing to dispose
-        }
-        else if (RunningClock !== null) {
-            RootClock.disposes.add(root);
-        }
-        else {
-            dispose(root);
-        }
-    }, root = disposer === null ? UNOWNED : getCandidateNode(), result;
+    var owner = Owner, disposer = fn.length === 0
+        ? null
+        : function _dispose() {
+            if (root === null) {
+                // nothing to dispose
+            }
+            else if (RunningClock !== null) {
+                RootClock.disposes.add(root);
+            }
+            else {
+                dispose(root);
+            }
+        }, root = disposer === null ? UNOWNED : getCandidateNode(), result;
     Owner = root;
     try {
         result = disposer === null ? fn() : fn(disposer);
@@ -34,7 +38,8 @@ S.root = function root(fn) {
     finally {
         Owner = owner;
     }
-    if (disposer !== null && recycleOrClaimNode(root, null, undefined, true)) {
+    if (disposer !== null &&
+        recycleOrClaimNode(root, null, undefined, true)) {
         root = null;
     }
     return result;
@@ -88,7 +93,10 @@ S.value = function value(current, eq) {
             if (!same) {
                 var time = RootClock.time;
                 if (age === time)
-                    throw new Error("conflicting values: " + update + " is not the same as " + current);
+                    throw new Error('conflicting values: ' +
+                        update +
+                        ' is not the same as ' +
+                        current);
                 age = time;
                 current = update;
                 node.next(update);
@@ -124,7 +132,7 @@ S.sample = function sample(fn) {
 };
 S.cleanup = function cleanup(fn) {
     if (Owner === null)
-        console.warn("cleanups created without a root or parent will never be run");
+        console.warn('cleanups created without a root or parent will never be run');
     else if (Owner.cleanups === null)
         Owner.cleanups = [fn];
     else
@@ -149,6 +157,62 @@ S.isFrozen = function isFrozen() {
 S.isListening = function isListening() {
     return Listener !== null;
 };
+// Local value
+S.useValue = function localValue(current, eq) {
+    var age = -1;
+    var node = Owner.localValue[Owner.localValueIndex++];
+    if (!node) {
+        node = Owner.localValue[Owner.localValueIndex - 1] = new DataNode(current);
+    }
+    return function value(update) {
+        if (arguments.length === 0) {
+            return node.current();
+        }
+        else {
+            var same = eq ? eq(current, update) : current === update;
+            if (!same) {
+                var time = RootClock.time;
+                if (age === time)
+                    throw new Error('conflicting values: ' +
+                        update +
+                        ' is not the same as ' +
+                        current);
+                age = time;
+                current = update;
+                node.next(update);
+            }
+            return update;
+        }
+    };
+};
+var DEFAULT_DEPS = [];
+S.useEffect = function useEffect(depsOrCb, cb) {
+    if (!Owner) {
+        throw new Error('Can use useEffect only inside computed');
+    }
+    var fn = (cb ? cb : depsOrCb);
+    var deps = (cb ? depsOrCb : DEFAULT_DEPS);
+    var prevDeps = Owner.localValue[Owner.localValueIndex++];
+    if (!shallowEqual(prevDeps, deps)) {
+        makeComputationNode(fn, undefined, false, false);
+        Owner.localValue[Owner.localValueIndex - 1] = deps;
+    }
+};
+S.async = function async(cb) {
+    var owner = Owner;
+    var listener = Listener;
+    var setter = function (cb) {
+        var o = Owner;
+        var l = Listener;
+        Owner = owner;
+        Listener = listener;
+        var result = cb();
+        Owner = o;
+        Listener = l;
+        return result;
+    };
+    cb(setter);
+};
 // Internal implementation
 /// Graph classes and operations
 var Clock = /** @class */ (function () {
@@ -161,7 +225,9 @@ var Clock = /** @class */ (function () {
     return Clock;
 }());
 var RootClockProxy = {
-    time: function () { return RootClock.time; }
+    time: function () {
+        return RootClock.time;
+    },
 };
 var DataNode = /** @class */ (function () {
     function DataNode(value) {
@@ -177,17 +243,23 @@ var DataNode = /** @class */ (function () {
     };
     DataNode.prototype.next = function (value) {
         if (RunningClock !== null) {
-            if (this.pending !== NOTPENDING) { // value has already been set once, check for conflicts
+            if (this.pending !== NOTPENDING) {
+                // value has already been set once, check for conflicts
                 if (value !== this.pending) {
-                    throw new Error("conflicting changes: " + value + " !== " + this.pending);
+                    throw new Error('conflicting changes: ' +
+                        value +
+                        ' !== ' +
+                        this.pending);
                 }
             }
-            else { // add to list of changes
+            else {
+                // add to list of changes
                 this.pending = value;
                 RootClock.changes.add(this);
             }
         }
-        else { // not batching, respond to change now
+        else {
+            // not batching, respond to change now
             if (this.log !== null) {
                 this.pending = value;
                 RootClock.changes.add(this);
@@ -217,12 +289,15 @@ var ComputationNode = /** @class */ (function () {
         this.log = null;
         this.owned = null;
         this.cleanups = null;
+        this.localValueIndex = 0;
+        this.localValue = [];
+        console.log('ComputationNode');
     }
     ComputationNode.prototype.current = function () {
         if (Listener !== null) {
             if (this.age === RootClock.time) {
                 if (this.state === RUNNING)
-                    throw new Error("circular dependency");
+                    throw new Error('circular dependency');
                 else
                     updateNode(this); // checks for state === STALE internally, so don't need to check here
             }
@@ -268,12 +343,15 @@ var Queue = /** @class */ (function () {
 // Constants
 var NOTPENDING = {}, CURRENT = 0, STALE = 1, RUNNING = 2, UNOWNED = new ComputationNode();
 // "Globals" used to keep track of current system state
-var RootClock = new Clock(), RunningClock = null, // currently running clock 
+var RootClock = new Clock(), RunningClock = null, // currently running clock
 Listener = null, // currently listening computation
 Owner = null, // owner for new computations
 LastNode = null; // cached unused node, for re-use
 // Functions
-var makeComputationNodeResult = { node: null, value: undefined };
+var makeComputationNodeResult = {
+    node: null,
+    value: undefined,
+};
 function makeComputationNode(fn, value, orphan, sample) {
     var node = getCandidateNode(), owner = Owner, listener = Listener, toplevel = RunningClock === null;
     Owner = node;
@@ -326,7 +404,9 @@ function getCandidateNode() {
     return node;
 }
 function recycleOrClaimNode(node, fn, value, orphan) {
-    var _owner = orphan || Owner === null || Owner === UNOWNED ? null : Owner, recycle = node.source1 === null && (node.owned === null && node.cleanups === null || _owner !== null), i;
+    var _owner = orphan || Owner === null || Owner === UNOWNED ? null : Owner, recycle = node.source1 === null &&
+        ((node.owned === null && node.cleanups === null) ||
+            _owner !== null), i;
     if (recycle) {
         LastNode = node;
         if (_owner !== null) {
@@ -364,7 +444,11 @@ function recycleOrClaimNode(node, fn, value, orphan) {
     return recycle;
 }
 function logRead(from) {
-    var to = Listener, fromslot, toslot = to.source1 === null ? -1 : to.sources === null ? 0 : to.sources.length;
+    var to = Listener, fromslot, toslot = to.source1 === null
+        ? -1
+        : to.sources === null
+            ? 0
+            : to.sources.length;
     if (from.node1 === null) {
         from.node1 = to;
         from.node1slot = toslot;
@@ -421,15 +505,18 @@ function run(clock) {
     RunningClock = clock;
     clock.disposes.reset();
     // for each batch ...
-    while (clock.changes.count !== 0 || clock.updates.count !== 0 || clock.disposes.count !== 0) {
-        if (count > 0) // don't tick on first run, or else we expire already scheduled updates
+    while (clock.changes.count !== 0 ||
+        clock.updates.count !== 0 ||
+        clock.disposes.count !== 0) {
+        if (count > 0)
+            // don't tick on first run, or else we expire already scheduled updates
             clock.time++;
         clock.changes.run(applyDataChange);
         clock.updates.run(updateNode);
         clock.disposes.run(dispose);
-        // if there are still changes after excessive batches, assume runaway            
+        // if there are still changes after excessive batches, assume runaway
         if (count++ > 1e5) {
-            throw new Error("Runaway clock detected");
+            throw new Error('Runaway clock detected');
         }
     }
     RunningClock = running;
@@ -478,6 +565,7 @@ function updateNode(node) {
         Owner = Listener = node;
         node.state = RUNNING;
         cleanup(node, false);
+        node.localValueIndex = 0;
         node.value = node.fn(node.value);
         node.state = CURRENT;
         Owner = owner;
@@ -532,4 +620,33 @@ function dispose(node) {
     node.fn = null;
     node.log = null;
     cleanup(node, true);
+}
+function shallowEqual(objA, objB) {
+    if (Object.is(objA, objB)) {
+        return true;
+    }
+    if (typeof objA !== 'object' ||
+        !objA ||
+        typeof objB !== 'object' ||
+        !objB) {
+        return false;
+    }
+    var keysA = Object.keys(objA);
+    var keysB = Object.keys(objB);
+    if (keysA.length !== keysB.length) {
+        return false;
+    }
+    var bHasOwnProperty = Object.prototype.hasOwnProperty.bind(objB);
+    // Test for A's keys different from B.
+    for (var idx = 0; idx < keysA.length; idx++) {
+        var key = keysA[idx];
+        if (!bHasOwnProperty(key)) {
+            return false;
+        }
+        // @ts-ignore
+        if (!Object.is(objA[key], objB[key])) {
+            return false;
+        }
+    }
+    return true;
 }
